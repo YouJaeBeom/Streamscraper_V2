@@ -30,44 +30,55 @@ from kafka import KafkaProducer
 
 class ScrapingEngine(object):
     def __init__(self, query, process_number, x_guest_token):
+        ## Setting query
         self.query = query
+        
+        ## Setting process number
         self.process_number = process_number
         
+        ## Setting authorization keysets
+        self.x_guest_token = x_guest_token 
+        
+        ## Setting init  
+        self.cursor = None
+        self.totalcount = 0
+        
+        ## Setting base url
+        self.base_url = "https://twitter.com/search?q="
+        
+        ## Setting kafka
+        self.producer = KafkaProducer(acks=0, compression_type='gzip', api_version=(0, 10, 1), bootstrap_servers=['117.17.189.205:9092','117.17.189.205:9093','117.17.189.205:9094'])
         
         ## Setting Language type
         with open('language_list.txt', 'r') as f:
             language_list_txt = f.read().split(",")
         self.language_list =[]
-        
         for language in language_list_txt:
             language=language.strip()
-            self.language_list.append(language)
-        
-        
+            self.language_list.append(language)   
+            
         self.accept_language = self.language_list[int(self.process_number)]
         self.x_twitter_client_language = self.language_list[int(self.process_number)]
-
-        ## Setting authorization keysets
-        self.x_guest_token = x_guest_token 
-
-        ## Setting init  
-        self.cursor = None
-        self.totalcount = 0
-
-        ## Setting base url
-        self.base_url = "https://twitter.com/search?q="
-
-        ## Setting kafka
-        self.producer = KafkaProducer(acks=0, compression_type='gzip', api_version=(0, 10, 1), bootstrap_servers=['117.17.189.205:9092','117.17.189.205:9093','117.17.189.205:9094'])
+        
+        
+        
         
     def set_search_url(self):
         self.url = self.base_url + self.query +"&src=typed_query&f=live"
+        
         return self.url
 
+    def set_token(self):
+        while True:
+            x_guest_token = AuthenticationManager.get_x_guest_token()
+            if x_guest_token != None :
+                break
+            continue
+        
+        return x_guest_token
+    
+    
     def start_scraping(self):
-        ## start tweet collection function 
-        ## http requests 
-
         ## get URL
         self.url = self.set_search_url()
 
@@ -78,11 +89,7 @@ class ScrapingEngine(object):
 
             if request_count == 100 :
                 request_count = 0
-                while True:
-                    #self.x_guest_token  = AuthenticationManager.get_brwoser(self.query)
-                    self.x_guest_token = AuthenticationManager.get_x_guest_token()
-                    if self.x_guest_token != None :
-                        break
+                self.x_guest_token = self.set_token()
             
             ## setting header
             self.headers = {
@@ -141,6 +148,7 @@ class ScrapingEngine(object):
                         params=self.params,
                         timeout=2
                         )
+                
                 self.response_json = self.response.json()
             except Exception as ex:
                 ## If API is restricted, request to change Cookie and Authorization again
@@ -151,12 +159,8 @@ class ScrapingEngine(object):
                 )
                 logger.critical(result_print)
                 print(result_print)
+                self.x_guest_token = self.set_token()
                 
-                while True:
-                    self.x_guest_token = AuthenticationManager.get_x_guest_token()
-                    if self.x_guest_token != None :
-                        break
-                continue
             
             ## parsing response 
             try:
@@ -173,52 +177,28 @@ class ScrapingEngine(object):
                 continue
             
 
-    def get_tweets(self,tweets):
-        """
-        Tweet object description : https://developer.twitter.com/en/docs/twitter-api/v1/data-dictionary/object-model/tweet
-        Entities object description : https://developer.twitter.com/en/docs/twitter-api/v1/data-dictionary/object-model/entities
-        Extended entities object description : https://developer.twitter.com/en/docs/twitter-api/v1/data-dictionary/object-model/extended-entities
-        Geo object description : https://developer.twitter.com/en/docs/twitter-api/v1/data-dictionary/object-model/geo
-        """ 
-        ## setup
-        tweets = self.tweets
-        
-        if self.cursor == None :
-            tweet = list(tweets)[0]
-            try:
-                quote_count = tweet['quote_count']
-            except Exception as ex:
-                pass
-            if quote_count == 0 :
-                self.totalcount = self.totalcount + 1
-                try:
-                    self.producer.send("tweet", json.dumps(tweet).encode('utf-8'))
-                    self.producer.flush()
-                except Exception as ex:
-                    logger.critical(ex)
-                    print(ex)
-            else:
-                pass
-
+            
+            
+    def get_tweets(self,tweets):  
         ## tweets to tweet
-        for tweet in tweets:  
-            try:                    
-                quote_count = tweet['quote_count']
-            except Exception as ex:
-                pass
-            if quote_count == 0 :    
-                print(json.dumps(tweet).encode('utf-8'))
+        for tweet in tweets:                    
+            is_quote_status = tweet['is_quote_status']
+            if is_quote_status==False:    
                 self.totalcount = self.totalcount + 1
-                try:                    
-                    self.producer.send("tweet", json.dumps(tweet).encode('utf-8'))
+                try:       
+                    tweet = json.dumps(tweet, indent=4, sort_keys=True, ensure_ascii=False)
+                    print(tweet)
+                    self.producer.send("tweet", tweet.encode('utf-8'))
                     self.producer.flush()
                 except Exception as ex:
                     logger.critical(ex)
                     print(ex)
-            else: 
-                continue
                     
         self.refresh_requests_setting()
+        
+        
+        
+        
         
     def refresh_requests_setting(self):
         self.cursor = GetCursor.get_refresh_cursor(self.response_json)
