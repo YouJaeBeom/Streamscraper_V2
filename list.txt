@@ -1,1 +1,1 @@
-russia,CVE,baseball
+russia

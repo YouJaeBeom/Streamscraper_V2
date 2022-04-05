@@ -18,18 +18,17 @@ file_handler = logging.FileHandler('log.txt')
 file_handler.setFormatter(formatter)
 logger.addHandler(file_handler)
 
+
+## import file
 import AuthenticationManager
 import GetCursor
 
 ## set kafka
 from kafka import KafkaProducer
 
-## selenium import setting
-from seleniumwire import webdriver
-from selenium.webdriver.firefox.options import Options
+
 
 class ScrapingEngine(object):
-    
     def __init__(self, query, process_number, x_guest_token):
         self.query = query
         self.process_number = process_number
@@ -134,8 +133,8 @@ class ScrapingEngine(object):
                     ('cursor', self.cursor ), ## next cursor range
             )
             
+            ## api requests 
             try:
-                ## call API with header, parameters
                 self.response = requests.get(
                         'https://twitter.com/i/api/2/search/adaptive.json', 
                         headers=self.headers,
@@ -143,33 +142,36 @@ class ScrapingEngine(object):
                         timeout=2
                         )
                 self.response_json = self.response.json()
-                
-                try:
-                    self.tweets = self.response_json['globalObjects']['tweets'].values()
-                    self.get_tweets(self.tweets)
-                except Exception as ex:
-                    result_print = "lan_type={0:<10}|query={1:<20}|paring error| error={2}|".format(
-                        self.process_number,
-                        self.query,
-                        ex
-                    )
-                    logger.critical(result_print)
-                    print(result_print)
-                    continue
             except Exception as ex:
                 ## If API is restricted, request to change Cookie and Authorization again
                 result_print = "lan_type={0:<10}|query={1:<20}|change Cookie&Authorization| error={2}|".format(
-                    self.process_number,
+                    self.accept_language,
                     self.query,
                     ex
                 )
                 logger.critical(result_print)
                 print(result_print)
+                
                 while True:
                     self.x_guest_token = AuthenticationManager.get_x_guest_token()
                     if self.x_guest_token != None :
                         break
                 continue
+            
+            ## parsing response 
+            try:
+                self.tweets = self.response_json['globalObjects']['tweets'].values()
+                self.get_tweets(self.tweets)
+            except Exception as ex:
+                result_print = "lan_type={0:<10}|query={1:<20}|paring error| error={2}|".format(
+                    self.accept_language,
+                    self.query,
+                    ex
+                )
+                logger.critical(result_print)
+                print(result_print)
+                continue
+            
 
     def get_tweets(self,tweets):
         """
@@ -205,6 +207,7 @@ class ScrapingEngine(object):
             except Exception as ex:
                 pass
             if quote_count == 0 :    
+                print(json.dumps(tweet).encode('utf-8'))
                 self.totalcount = self.totalcount + 1
                 try:                    
                     self.producer.send("tweet", json.dumps(tweet).encode('utf-8'))
@@ -221,7 +224,7 @@ class ScrapingEngine(object):
         self.cursor = GetCursor.get_refresh_cursor(self.response_json)
         
         result_print = "lan_type={0:<10}|query={1:<20}|tweet_count={2:<10}|".format(
-                self.process_number,
+                self.accept_language,
                 self.query,
                 self.totalcount
         )
