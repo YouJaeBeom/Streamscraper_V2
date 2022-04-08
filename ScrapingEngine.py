@@ -187,7 +187,6 @@ class ScrapingEngine(object):
                 self.totalcount = self.totalcount + 1
                 try:       
                     tweet = json.dumps(tweet, indent=4, sort_keys=True, ensure_ascii=False)
-                    print(tweet)
                     self.producer.send("tweet", tweet.encode('utf-8'))
                     self.producer.flush()
                 except Exception as ex:
