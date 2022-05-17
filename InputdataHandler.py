@@ -1,7 +1,7 @@
 import os
 import time
 from itertools import repeat
-
+import socket
 import AuthenticationManager
 import multiprocessing
 # We must import this explicitly, it is not imported by the top-level
@@ -26,10 +26,9 @@ class MyPool(multiprocessing.pool.Pool):
     Process = NoDaemonProcess
 
 # This block of code enables us to call the script from command line.
-def execute(query,process_number,x_guest_token):
-    
+def execute(query,process_number,x_guest_token, conn, addr):
     try:
-        command = "python ScrapingEngine.py --query '%s' --process_number '%s'  --x_guest_token '%s' "%(query, process_number, x_guest_token)
+        command = "python ScrapingEngine.py --query '%s' --process_number '%s'  --x_guest_token '%s' --conn '%s' --addr '%s'"%(query, process_number, x_guest_token, conn, addr)
         print(command)
         os.system(command)
     except Exception as ex:
@@ -68,8 +67,22 @@ def query_execute(query_index):
         x_guest_token = AuthenticationManager.get_x_guest_token()
         if x_guest_token != None:
             break
+    
+    TCP_IP = "117.17.189.206"
+    TCP_PORT = 13000
+    conn = None
+    # create a socket object
+    s = socket.socket()
+    s.bind((TCP_IP, TCP_PORT))
+    s.listen(1)
+    print("listen")
+
+    conn, addr = s.accept()
+
+    print(conn, addr)
+    
     process_pool = multiprocessing.Pool(processes = num_of_lang)
-    process_pool.starmap(execute, zip(repeat(query), num_of_lang_list, repeat(x_guest_token) ))
+    process_pool.starmap(execute, zip(repeat(query), num_of_lang_list, repeat(x_guest_token), repeat(conn), repeat(addr) ))
     process_pool.close()
     process_pool.join()
 
