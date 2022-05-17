@@ -5,6 +5,10 @@ import sys
 import time
 import maya
 import socket
+
+import urllib.parse
+import urllib.request
+
 from pytz import timezone
 import datetime
 KST = timezone('Asia/Seoul')
@@ -96,6 +100,7 @@ class ScrapingEngine(object):
         return self.url
 
     def set_token(self):
+        print(self.accept_language, self.query, "retry token")
         while True:
             x_guest_token = AuthenticationManager.get_x_guest_token()
             if x_guest_token != None :
