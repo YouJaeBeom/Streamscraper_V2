@@ -41,31 +41,12 @@ import GetCursor
 from kafka import KafkaProducer
 
 
-TCP_IP = "117.17.189.206"
-TCP_PORT = 13000
-conn = None
-# create a socket object
-s = socket.socket()
-s.bind((TCP_IP, TCP_PORT))
-s.listen(1)
-print("listen")
-
-conn, addr = s.accept()
-print(conn, addr)
-
 
 
 class ScrapingEngine(object):
-    def __init__(self, query, process_number, x_guest_token, conn, addr):
-        ## Setting connection 
-        self.conn = conn
-        self.addr = addr
-
+    def __init__(self, query, language, x_guest_token):
         ## Setting query
         self.query = query
-        
-        ## Setting process number
-        self.process_number = process_number
         
         ## Setting authorization keysets
         self.x_guest_token = x_guest_token 
@@ -81,23 +62,15 @@ class ScrapingEngine(object):
         self.producer = KafkaProducer(acks=0, compression_type='gzip', api_version=(0, 10, 1), bootstrap_servers=['117.17.189.205:9092','117.17.189.205:9093','117.17.189.205:9094'])
         
         ## Setting Language type
-        with open('language_list.txt', 'r') as f:
-            language_list_txt = f.read().split(",")
-        self.language_list =[]
-        for language in language_list_txt:
-            language=language.strip()
-            self.language_list.append(language)   
-            
-        self.accept_language = self.language_list[int(self.process_number)]
-        self.x_twitter_client_language = self.language_list[int(self.process_number)]
-        
-        
-        
-        
+        self.accept_language = language
+        self.x_twitter_client_language = language
+
+
     def set_search_url(self):
         self.url = self.base_url + self.query +"&src=typed_query&f=live"
         
         return self.url
+
 
     def set_token(self):
         print(self.accept_language, self.query, "retry token")
@@ -218,13 +191,6 @@ class ScrapingEngine(object):
             tweet['start_timestamp'] = datetime.datetime.now().strftime('%Y-%m-%d %H:%M:%S.%f')
             if is_quote_status==False:    
                 self.totalcount = self.totalcount + 1
-                ## send socket
-                try:
-                    self.conn.send((json.dumps(tweet)+"\n").encode('utf-8'))
-                except Exception as es:
-                    logger.critical(es)
-                    print("xxxxx",es)
-                    continue
                 ## send kafka 
                 try:       
                     tweet = json.dumps(tweet, indent=4, sort_keys=True, ensure_ascii=False)
@@ -237,9 +203,6 @@ class ScrapingEngine(object):
         self.refresh_requests_setting()
         
         
-        
-        
-        
     def refresh_requests_setting(self):
         self.cursor = GetCursor.get_refresh_cursor(self.response_json)
         
@@ -250,115 +213,3 @@ class ScrapingEngine(object):
         )
         print(result_print)
         logger.critical(result_print)
-        
-        
-        
-
-        
-        
-class NoDaemonProcess(multiprocessing.Process):
-    # make 'daemon' attribute always return False
-    def _get_daemon(self):
-        return False
-    def _set_daemon(self, value):
-        pass
-    daemon = property(_get_daemon, _set_daemon)
-
-# We sub-class multiprocessing.pool.Pool instead of multiprocessing.Pool
-# because the latter is only a wrapper function, not a proper class.
-class MyPool(multiprocessing.pool.Pool):
-    Process = NoDaemonProcess
-
-# This block of code enables us to call the script from command line.
-def execute(query,process_number,x_guest_token, conn, addr):
-    try:
-        streamscraper = ScrapingEngine(query, process_number, x_guest_token, conn, addr)
-        streamscraper.start_scraping()        
-        command = "python ScrapingEngine.py --query '%s' --process_number '%s'  --x_guest_token '%s' --conn '%s' --addr '%s'"%(query, process_number, x_guest_token, conn, addr)
-        print(command)
-        """os.system(command)"""
-    except Exception as ex:
-        pass
-
-def query_execute(query_index):
-    
-    ## language_list
-    with open('language_list.txt', 'r') as f:
-        language_list_txt = f.read().split(",")
-    
-    language_list =[]
-    for language in language_list_txt:
-        language=language.strip()
-        language_list.append(language)
-
-    num_of_lang = len(language_list)
-    num_of_lang_list = []
-
-    for index in range(0,num_of_lang):
-        num_of_lang_list.append(index)
-        
-    ## query list 
-    with open('list.txt', 'r') as f:
-        query_list_txt = f.read().split(',')
-
-    query_list =[]
-    for query in query_list_txt:
-        query=query.strip()
-        query_list.append(query)
-
-    query = query_list[query_index]
-
-    x_guest_token = None
-    while True:
-        x_guest_token = AuthenticationManager.get_x_guest_token()
-        if x_guest_token != None:
-            break
-    
-    
-    
-    process_pool = multiprocessing.Pool(processes = num_of_lang)
-    process_pool.starmap(execute, zip(repeat(query), num_of_lang_list, repeat(x_guest_token), repeat(conn), repeat(addr) ))
-    process_pool.close()
-    process_pool.join()
-    
-    
-if(__name__ == '__main__') :
-    start=time.time()
-    
-    ## query list 
-    with open('list.txt', 'r') as f:
-        query_list_txt = f.read().split(',')
-
-    query_list =[]
-    for query in query_list_txt:
-        query=query.strip()
-        query_list.append(query)
-
-    num_of_query = len(query_list)
-
-    num_of_query_list = []
-
-    for index in range(0,num_of_query):
-        num_of_query_list.append(index)
-    
-    
-    print(conn, addr)
-    
-    process_pool = MyPool(num_of_query)
-    process_pool.map(query_execute,(num_of_query_list))
-    process_pool.close()
-    process_pool.join()
-    
-    """parser = argparse.ArgumentParser()
-    parser.add_argument("--query",help="add query")
-    parser.add_argument("--process_number", help="add process_number")
-    parser.add_argument("--x_guest_token", help="add init x_guest_token")
-    parser.add_argument("--conn", help="add init conn")
-    parser.add_argument("--addr", help="add init addr")
-    args = parser.parse_args()
-    
-    streamscraper = ScrapingEngine(args.query, args.process_number, args.x_guest_token, args.conn, args.addr)
-    streamscraper.start_scraping()"""
-
-print("-------%s seconds -----"%(time.time()-start))
-
